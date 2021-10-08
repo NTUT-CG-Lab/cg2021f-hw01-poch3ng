@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgl - loader - ttf</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<link type="text/css" rel="stylesheet" href="main.css">
+	</head>
+	<body>
+
+		<script src="./opentype.min.js"></script>
+		<script src="./three.min.js"></script>
+		<script src="./TTFLoader.js"></script>
+
+		<div id="info">
+			<a href="https://threejs.org" target="_blank" rel="noopener">three.js webgl</a> - equirectangular panorama demo. photo by <a href="https://ntut-cg-lab.github.io/cg2021f-hw00-poch3ng/" target="_blank" rel="noopener">POCHENG</a>.<br />
+			drag equirectangular texture into the page.
+		</div>
+		
+		<script>
+		
+			var fontttf = "fonts/wt021.ttf";
+			
+			let INTERSECTED;
+			let container;
+			let camera, cameraTarget, scene, renderer, raycaster;
+			let group, textMesh, textMesh2, textGeo, material, introText;
+			let firstLetter = true;
+
+			const pointer = new THREE.Vector2();
+			
+			const height = 20,
+				size = 30,
+				hover = 30,
+				curveSegments = 4,
+				bevelThickness = 2,
+				bevelSize = 1.5;
+
+			let font = null;
+
+			let windowHalfX = window.innerWidth / 2;
+
+			// Panorama
+			let isUserInteracting = false,
+				onPointerDownMouseX = 0, onPointerDownMouseY = 0,
+				lon = 0, onPointerDownLon = 0,
+				lat = 0, onPointerDownLat = 0,
+				phi = 0, theta = 0;
+
+			init();
+			animate();
+
+			function init() {
+
+				container = document.createElement( 'div' );
+				document.body.appendChild( container );
+
+				// CAMERA
+
+				camera = new THREE.PerspectiveCamera( 35, window.innerWidth / window.innerHeight, 1, 1500 );
+				camera.position.set( 0, 200, 800);
+
+				cameraTarget = new THREE.Vector3( 0, 150, 0 );
+
+				// SCENE
+
+				scene = new THREE.Scene();
+				scene.background = new THREE.Color( 0x000000 );
+				//scene.fog = new THREE.Fog( 0x000000, 250, 1400 );
+
+				// PANORAMA
+
+				const geometry = new THREE.SphereGeometry( 1000, 120, 80 );
+				// invert the geometry on the x-axis so that all of the faces point inward
+				geometry.scale( - 1, 1, 1 );
+
+				const skytexture = new THREE.TextureLoader().load( 'textures/panorama.jpg' );
+				const skymaterial = new THREE.MeshBasicMaterial( { map: skytexture } );
+
+				const mesh = new THREE.Mesh( geometry, skymaterial );
+				mesh.position.set( 0, 200, 800);
+
+				scene.add( mesh );
+
+				// LIGHTS
+
+				const dirLight = new THREE.DirectionalLight( 0xffffff, 0.125 );
+				dirLight.position.set( 0, 0, 1 ).normalize();
+				scene.add( dirLight );
+
+				const pointLight = new THREE.PointLight( 0xffffff, 1.5 );
+				pointLight.position.set( 0, 100, 90 );
+				pointLight.color.setHSL( Math.random(), 1, 0.5 );
+				scene.add( pointLight );
+
+				material = new THREE.MeshPhongMaterial( { color: 0xffffff, flatShading: true } );
+
+				group = new THREE.Group();
+				group.position.y = 100;
+
+				scene.add( group );
+
+				const loader = new THREE.TTFLoader();
+				loader.load( fontttf, function ( json ) {
+					// console.log(json)
+					font = new THREE.Font( json );
+
+					createClock();
+					
+					// 超高等計算機圖學字樣
+					let position = new THREE.Vector3(-180, -120, 0);
+					introText = createText("超高等計算機圖學作業", position);
+					group.add(introText);
+				} );
+
+
+
+
+				// RAYCASTER
+				raycaster = new THREE.Raycaster();
+
+				// RENDERER
+				renderer = new THREE.WebGLRenderer( { antialias: true } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				container.appendChild( renderer.domElement );
+				
+				// EVENTS
+
+				container.style.touchAction = 'none';
+				container.addEventListener( 'pointerdown', onPointerDown );
+
+				document.addEventListener( 'wheel', onDocumentMouseWheel );
+
+				// panorama event
+
+				document.addEventListener( 'dragover', function ( event ) {
+
+					event.preventDefault();
+					event.dataTransfer.dropEffect = 'copy';
+
+				} );
+
+				document.addEventListener( 'dragenter', function () {
+
+					document.body.style.opacity = 0.5;
+
+				} );
+
+				document.addEventListener( 'dragleave', function () {
+
+					document.body.style.opacity = 1;
+
+				} );
+
+				document.addEventListener( 'drop', function ( event ) {
+
+					event.preventDefault();
+
+					const reader = new FileReader();
+					reader.addEventListener( 'load', function ( event ) {
+
+						skymaterial.map.image.src = event.target.result;
+						skymaterial.map.needsUpdate = true;
+
+					} );
+					reader.readAsDataURL( event.dataTransfer.files[ 0 ] );
+
+					document.body.style.opacity = 1;
+
+				} );
+
+				//
+				window.addEventListener( 'resize', onWindowResize );
+
+			}
+
+
+			function onWindowResize() {
+
+				windowHalfX = window.innerWidth / 2;
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+
+			function createText(text, position) {
+
+				textGeo = new THREE.TextGeometry( text, {
+
+					font: font,
+
+					size: size,
+					height: height,
+					curveSegments: curveSegments,
+
+					bevelThickness: bevelThickness,
+					bevelSize: bevelSize,
+					bevelEnabled: true
+
+				} );
+
+				textGeo.computeBoundingBox();
+				textGeo.computeVertexNormals();
+
+				const centerOffset = 0;
+
+				textMesh = new THREE.Mesh( textGeo, material );
+
+				textMesh.position.x = position.x;
+				textMesh.position.y = position.y;
+				textMesh.position.z = position.z;
+
+				textMesh.rotation.x = 0;
+				textMesh.rotation.y = Math.PI * 2;
+
+				return textMesh;
+			}
+
+			// degree to radians
+			function toRadians (angle) {
+				return angle * (Math.PI / 180);
+			}
+
+			function createClock(){
+
+				const clockElement = ["子","丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"];
+
+				clockElement.forEach(createClockItem);
+			}
+
+			function createClockItem(item, index) {
+				let radius = 120;
+				let y_offset = 60;
+				let degree = 90 - (30 * index);
+				let position = new THREE.Vector3(radius * Math.cos(toRadians(degree)), radius * Math.sin(toRadians(degree)) + y_offset, 0);
+				let clockItem = createText(item, position);
+				let linkAddress = "https://ntut-cg-lab.github.io/cg2021f-hw0" + (index+1) + "-poch3ng/";
+
+				clockItem.userData = { URL: linkAddress};
+				group.add( clockItem );
+
+				// console.log(degree);
+				console.log(item);
+				// console.log(linkAddress);
+			}
+
+			function onPointerDown( event ) {
+
+				if ( event.isPrimary === false ) return;
+
+				isUserInteracting = true;
+
+				onPointerDownMouseX = event.clientX;
+				onPointerDownMouseY = event.clientY;
+
+				onPointerDownLon = lon;
+				onPointerDownLat = lat;
+
+				// calculate objects intersecting the picking ray
+				const intersects = raycaster.intersectObjects( group.children );
+				if (intersects.length > 0) {
+					if(intersects[0].object.userData.URL != null){
+					
+						window.open(intersects[0].object.userData.URL);
+					}
+					else
+						console.log("nothing can open");
+				}
+
+				document.addEventListener( 'pointermove', onPointerMove );
+				document.addEventListener( 'pointerup', onPointerUp );
+
+			}
+
+			function onPointerMove( event ) {
+
+				if ( event.isPrimary === false ) return;
+
+				pointer.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+				pointer.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
+
+				lon = ( onPointerDownMouseX - event.clientX ) * 0.1 + onPointerDownLon;
+				lat = ( event.clientY - onPointerDownMouseY ) * 0.1 + onPointerDownLat;
+
+			}
+
+			function onPointerUp() {
+
+				if ( event.isPrimary === false ) return;
+
+				isUserInteracting = false;
+
+				document.removeEventListener( 'pointermove', onPointerMove );
+				document.removeEventListener( 'pointerup', onPointerUp );
+
+			}
+
+			function onDocumentMouseWheel( event ) {
+
+				const fov = camera.fov + event.deltaY * 0.05;
+
+				camera.fov = THREE.MathUtils.clamp( fov, 10, 75 );
+
+				camera.updateProjectionMatrix();
+
+			}
+			//
+
+			function animate() {
+
+				requestAnimationFrame( animate );
+				render();
+
+			}
+
+			function render(){
+
+				if ( isUserInteracting === false ) {
+					lon -= 0.03;
+				}
+
+				lat = Math.max( - 85, Math.min( 85, lat ) );
+				phi = THREE.MathUtils.degToRad( 90 - lat );
+				theta = THREE.MathUtils.degToRad( lon );
+
+
+				const x = 500 * Math.sin( phi ) * Math.cos( theta );
+				const y = 500 * Math.cos( phi );
+				const z = 500 * Math.sin( phi ) * Math.sin( theta );
+
+				camera.lookAt( x , y + 150, z + 800);
+
+				//camera.lookAt( cameraTarget );
+
+				// find intersections
+
+				raycaster.setFromCamera( pointer, camera );
+				
+
+
+				renderer.render( scene, camera );
+			}
+
+		</script>
+
+	</body>
+</html>
